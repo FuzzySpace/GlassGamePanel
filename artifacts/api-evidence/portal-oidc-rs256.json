@@ -1,0 +1,64 @@
+{
+  "agent_mint": "agent-hmac-mint",
+  "aud": "https://panel-api-test.glasshosting.internal",
+  "cases": [
+    {
+      "name": "staff_rs256_list",
+      "status": 200
+    },
+    {
+      "name": "agent_rs256_list",
+      "status": 200
+    },
+    {
+      "code": "managed_inventory_denied",
+      "name": "managed_inventory_deny_uuid",
+      "status": 403
+    },
+    {
+      "code": "unauthorized",
+      "name": "wrong_key",
+      "status": 401
+    },
+    {
+      "code": "unauthorized",
+      "name": "wrong_aud",
+      "status": 401
+    },
+    {
+      "code": "unauthorized",
+      "name": "prod_aud",
+      "status": 401
+    },
+    {
+      "code": "unauthorized",
+      "name": "wrong_iss",
+      "status": 401
+    },
+    {
+      "code": "unauthorized",
+      "name": "wrong_alg",
+      "status": 401
+    },
+    {
+      "name": "kid_rotation",
+      "status": 200
+    },
+    {
+      "code": "unauthorized",
+      "name": "staff_hs256",
+      "status": 401
+    },
+    {
+      "name": "minted_agent_hs256_list",
+      "status": 200
+    }
+  ],
+  "gate": "Portal OIDC RS256",
+  "gate_2b": "option-a",
+  "iss": "https://portal-test.glasshosting.internal",
+  "pass": true,
+  "proves": "Staff JWTs verify as RS256 against a local JWKS. GET /v1/servers is 200. Staff HS256 is 401 even when the HMAC secret is configured. A panel-minted agent HS256 token is 200 on GET /v1/servers. Portal-minted agent RS256 is also 200. A managed-inventory deny UUID is 403 managed_inventory_denied. A token signed by a key that is not in the JWKS is 401. Wrong aud, iss, and alg are 401. Kid rotation is accepted while the previous kid remains published. Wings dispatch stays 0. This repo does not mint Portal tokens. HMAC signs agent tokens only and is not a staff accept path.",
+  "staff_accept": "portal-oidc-rs256",
+  "wings_dispatch": 0
+}

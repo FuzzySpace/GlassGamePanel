@@ -1,0 +1,16 @@
+name: free-wings-refuse
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  refuse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse unowned servers and production panel remotes
+        run: bash packaging/free/tests/refuse_unowned_servers.sh

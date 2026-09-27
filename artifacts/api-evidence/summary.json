@@ -1,0 +1,16 @@
+{
+  "deny_sha256": "a511e974bb08f6f19f612f19e1bb9cb2693489eeb8d4869351e42e0279824097",
+  "gates": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6"
+  ],
+  "openapi_version": "0.1.5-stub",
+  "result": "pass",
+  "runtime": "cmd/panel-api-test",
+  "spec": "openapi/glass-game-panel-v1.openapi.yaml",
+  "wings_dispatch": 0
+}

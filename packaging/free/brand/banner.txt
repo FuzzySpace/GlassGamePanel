@@ -1,0 +1,10 @@
+========================================================================
+  Glasshouse Holding Group
+  GlassHosting  ·  GlassGamePanel
+  glassgamepanel-wings-free-v0.1.0
+  Free · Wings one-click (DIY operator-owned GlassGamePanel)
+========================================================================
+  Your machine. Your panel. This does not include GlassHosting capacity.
+  The installer will not enroll a GlassHosting production panel.
+  Verify SHA256SUMS before you run it.
+========================================================================

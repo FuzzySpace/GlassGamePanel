@@ -1,0 +1,102 @@
+{
+  "cases": [
+    {
+      "name": "include_managed_inventory_true_rejected",
+      "method": "POST",
+      "path": "/v1/migrations/ptero",
+      "status": 403,
+      "code": "forbidden",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "mode_import_rejected",
+      "method": "POST",
+      "path": "/v1/migrations/ptero",
+      "status": 403,
+      "code": "forbidden",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "mode_cutover_rejected",
+      "method": "POST",
+      "path": "/v1/migrations/ptero",
+      "status": 403,
+      "code": "forbidden",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "inventory_only_non_deny_fixture",
+      "method": "POST",
+      "path": "/v1/migrations/ptero",
+      "status": 202,
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "remap_force_deny_uuid",
+      "method": "PATCH",
+      "path": "/v1/migrations/d5fb5db9-a873-44e4-b7f3-3e3494ed91a0/remap",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "remap_force_whmcs_ct",
+      "method": "PATCH",
+      "path": "/v1/migrations/d5fb5db9-a873-44e4-b7f3-3e3494ed91a0/remap",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "remap_non_deny_allowed",
+      "method": "PATCH",
+      "path": "/v1/migrations/d5fb5db9-a873-44e4-b7f3-3e3494ed91a0/remap",
+      "status": 200,
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "confirm_rejected",
+      "method": "POST",
+      "path": "/v1/migrations/d5fb5db9-a873-44e4-b7f3-3e3494ed91a0/confirm",
+      "status": 403,
+      "code": "forbidden",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "rollback_design_stub",
+      "method": "POST",
+      "path": "/v1/migrations/d5fb5db9-a873-44e4-b7f3-3e3494ed91a0/rollback",
+      "status": 200,
+      "wings_dispatch": 0,
+      "pass": true
+    }
+  ],
+  "gate": "B2",
+  "inventory_only": {
+    "deny_uuids_skipped": 8,
+    "dry_run": true,
+    "include_managed_inventory": false,
+    "managed_inventory_excluded_count": 11,
+    "mode": "inventory_only",
+    "servers_imported": 0,
+    "servers_planned": 1,
+    "source_api_token_leaked": false,
+    "source_http_hits": 0,
+    "status": 202,
+    "whmcs_cts_skipped": [
+      "210",
+      "211",
+      "1220"
+    ]
+  },
+  "pass": true,
+  "proves": "TEST forces include_managed_inventory=false. A client boolean plus founder_yes_attestation_id plus allowlist is rejected. Remap cannot force managed-inventory rows. inventory_only plans a non-deny fixture and skips denied servers. Confirm is refused by the migrate mode ceiling. Rollback is a design stub and does not mutate."
+}

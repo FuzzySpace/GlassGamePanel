@@ -1,0 +1,59 @@
+{
+  "cases": [
+    {
+      "name": "mint_ticket",
+      "method": "POST",
+      "path": "/v1/servers/11111111-1111-4111-8111-111111111111/console-ticket",
+      "status": 201,
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "ws_bearer_rejected",
+      "method": "GET",
+      "path": "/v1/servers/11111111-1111-4111-8111-111111111111/console",
+      "status": 401,
+      "code": "unauthorized",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "console_ticket_managed_inventory_denied",
+      "method": "POST",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/console-ticket",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "ws_upgrade_managed_inventory_denied",
+      "method": "GET",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/console",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    }
+  ],
+  "gate": "B4",
+  "pass": true,
+  "proves": "Console tickets are max 120s, single-use, and bound to serverId plus the minting subject. WebSocket auth is the ticket query only. Bearer on the handshake is rejected and does not consume the ticket. managed-inventory deny applies to mint and upgrade.",
+  "ticket": {
+    "max_ttl_seconds": 120,
+    "single_use": true,
+    "ttl_within_cap": true,
+    "bound_server": true,
+    "bound_subject": true,
+    "websocket_url_has_ticket": true,
+    "websocket_url_omits_bearer": true,
+    "first_upgrade_status": 101,
+    "second_use_status": 401,
+    "bearer_handshake_status": 401,
+    "bearer_handshake_code": "unauthorized",
+    "bearer_did_not_consume_ticket": true,
+    "other_server_status": 401,
+    "deny_mint_status": 403,
+    "deny_upgrade_status": 403
+  }
+}

@@ -1,0 +1,1896 @@
+openapi: 3.1.0
+info:
+  title: Glass Game Panel Control Plane API
+  version: 0.1.5-stub
+  summary: GlassGamePanel control plane (draft)
+  description: |
+    Draft control-plane API for GlassGamePanel (`0.1.5-stub`). Humans and agents
+    share this API. A UI is another client. Wings is the current executor; a
+    later driver may sit behind the same verbs. This draft is not a production deploy.
+
+    **Defaults:**
+    - Documented production base: `https://panel-api.glasshosting.com/v1` (not published with this draft)
+    - `serverId` is a Glass UUID. The Wings UUID is `wings_server_id`
+    - Auth is Portal OIDC. Portal mints agent tokens. Agent tokens cannot mint child tokens
+    - `agents:manage` is for people, not for agent tokens
+    - Console is a ticket plus WebSocket. No Authorization header on the WebSocket handshake
+    - Agents use the files API. Optional SFTP for people is later
+    - RCON is deferred to v1.1
+    - `network` is reserved. There is no allocate or release path in this draft
+    - Rate limits: 60 mutate requests and 300 read requests per minute per token
+    - Repository: `FuzzySpace/GlassGamePanel`
+
+    **Migration:**
+    - GlassHosting-owned Pterodactyl first. A panel the customer operates is later
+    - Default mode is `inventory_only`
+    - Rollback window default is 72 hours (design stub)
+    - Servers the caller does not own stay excluded. `include_managed_inventory` is forced false in this build
+
+    **Refuse:**
+    A request whose target matches the deny catalog returns **403 `managed_inventory_denied`**
+    for power, files, console tickets, backups (including restore), delete, restore,
+    and server write (create, patch, delete). Empty agent `server_ids` still cannot
+    reach those targets. Live billing credentials and panel administrator keys are
+    not handed to agents.
+
+    **Create:**
+    `POST /servers` claims one free IPv4 and IPv6 pair from the configured pool
+    and completes the `server.create` job. The IPv6 row is not a public address.
+    `wings_server_id` stays null. The default executor does not dial Wings.
+    There is no standalone allocate or release API.
+
+    **Product boundaries:**
+    - Glass Watch is a separate product. Do not embed Watch APIs here.
+      It can share Portal sign-in when the two products are linked.
+    - The same email is one account across Portal, GlassGamePanel, and Watch.
+      On a match, link the existing account. Do not create a second user.
+
+    The machine deny catalog lives in the embedded deny file the runtime
+    compares (`managed-inventory-deny.json`). It is not listed as product copy
+    in this description. See `x-glass-managed-inventory-deny` for refuse behavior only.
+  contact:
+    name: GlassHosting
+  license:
+    name: Proprietary — Glasshouse Holding Group LLC
+    identifier: LicenseRef-Proprietary
+
+servers:
+  - url: http://127.0.0.1:8080/v1
+    description: |
+      Local default for this draft. Not a public production base.
+      There is no anonymous OpenAPI UI on the process.
+  - url: https://panel-api.glasshosting.com/v1
+    description: Documented production base. Not published with this draft.
+
+tags:
+  - name: Servers
+  - name: Power
+  - name: Console
+  - name: Files
+  - name: Backups
+  - name: Metrics
+  - name: Eggs
+  - name: Entitlements
+  - name: AgentTokens
+  - name: Jobs
+  - name: Migrations
+
+paths:
+  /servers:
+    get:
+      tags: [Servers]
+      operationId: listServers
+      summary: List servers visible to the caller
+      security:
+        - BearerAuth: [servers:read]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ServerStatus'
+      responses:
+        '200':
+          description: Cursor page of servers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerPage'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Servers]
+      operationId: createServer
+      summary: Create a server (job completes with an IPv4 and IPv6 claim; refused servers return 403 managed_inventory_denied; default executor does not dial Wings)
+      security:
+        - BearerAuth: [servers:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServerCreate'
+      responses:
+        '202':
+          description: Accepted; provision job started
+          headers:
+            Location:
+              description: Job URL
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /servers/{serverId}:
+    parameters:
+      - $ref: '#/components/parameters/ServerId'
+    get:
+      tags: [Servers]
+      operationId: getServer
+      summary: Get one server
+      security:
+        - BearerAuth: [servers:read]
+      responses:
+        '200':
+          description: Server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        default:
+          $ref: '#/components/responses/Error'
+    patch:
+      tags: [Servers]
+      operationId: updateServer
+      summary: Patch server metadata or limits (not power; refused servers return 403 managed_inventory_denied)
+      security:
+        - BearerAuth: [servers:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServerUpdate'
+      responses:
+        '200':
+          description: Updated server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      tags: [Servers]
+      operationId: deleteServer
+      summary: Delete server (async; refused servers return 403 managed_inventory_denied)
+      security:
+        - BearerAuth: [servers:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Delete job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /servers/{serverId}/power:
+    parameters:
+      - $ref: '#/components/parameters/ServerId'
+    post:
+      tags: [Power]
+      operationId: serverPower
+      summary: Start, stop, restart, or kill (refused servers return 403 managed_inventory_denied)
+      security:
+        - BearerAuth: [power]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PowerAction'
+      responses:
+        '202':
+          description: Power transition accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '409':
+          description: Invalid transition for current state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /servers/{serverId}/console:
+    parameters:
+      - $ref: '#/components/parameters/ServerId'
+    get:
+      tags: [Console]
+      operationId: serverConsoleWs
+      summary: Console stream (WebSocket upgrade)
+      description: |
+        Ticket plus WebSocket only. Clients mint
+        `POST /servers/{id}/console-ticket` and connect with the ticket as a
+        query parameter on the WebSocket URL. Authorization Bearer on the
+        handshake is not supported and must be rejected.
+
+        Ticket TTL is at most 120 seconds (`max_ttl_seconds`), single-use, and
+        bound to `serverId` plus the minting subject. Refused servers are
+        rejected on mint and on upgrade.
+
+        Not a JSON HTTP body. Frames are text console I/O. Shell escape is
+        refused. A command allowlist is later.
+      # WebSocket auth is the ticket query parameter only (no BearerAuth)
+      security: []
+      responses:
+        '101':
+          description: Switching Protocols (WebSocket)
+        '400':
+          description: Non-upgrade HTTP request rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /servers/{serverId}/console-ticket:
+    parameters:
+      - $ref: '#/components/parameters/ServerId'
+    post:
+      tags: [Console]
+      operationId: createConsoleTicket
+      summary: Mint a short-lived console WebSocket ticket (refused servers return 403 managed_inventory_denied)
+      description: |
+        Returns a single-use ticket bound to this `serverId` and the minting
+        subject. `expires_at` must be at most now plus `max_ttl_seconds` (120).
+        Refused servers return 403 `managed_inventory_denied`. WebSocket clients
+        authenticate with the ticket only (no Bearer on upgrade).
+      security:
+        - BearerAuth: [console]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: Ticket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsoleTicket'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /servers/{serverId}/files:
+    parameters:
+      - $ref: '#/components/parameters/ServerId'
+    get:
+      tags: [Files]
+      operationId: listFiles
+      summary: List a directory under the server jail (refused servers return 403 managed_inventory_denied)
+      description: |
+        Agents use the files API only. Optional SFTP credentials for people
+        are outside the v1 agent path.
+      security:
+        - BearerAuth: [files]
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            default: /
+            description: Absolute path within server root jail
+      responses:
+        '200':
+          description: Directory listing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileList'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /servers/{serverId}/files/content:
+    parameters:
+      - $ref: '#/components/parameters/ServerId'
+    get:
+      tags: [Files]
+      operationId: readFile
+      summary: Read file bytes (size-capped)
+      security:
+        - BearerAuth: [files]
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/Error'
+    put:
+      tags: [Files]
+      operationId: writeFile
+      summary: Write an allowlisted jar or zip under mods/ or plugins/
+      description: |
+        Refused servers return 403 `managed_inventory_denied` with Wings dispatch 0.
+        `PANEL_WINGS_EXECUTOR=noop`, an empty `PANEL_WINGS_ALLOWLIST`, and a UUID
+        that is not on that list return 403 and do not dial. When the executor is
+        `real`, the daemon origin and token are set, and the path UUID is
+        allowlisted, this dials Wings `POST /api/servers/{uuid}/files/write`.
+        The path must stay under `mods/` or `plugins/` and end in `.jar` or `.zip`.
+        `../`, host paths, and unit paths are refused before any dial.
+        The body must be a zip local-file archive. Evidence is `X-Request-Id`,
+        `X-Glass-Wings-HTTP-Status`, and `wings_dialed` / `wings_http_status`.
+      security:
+        - BearerAuth: [files]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            description: Volume path under mods/ or plugins/ (.jar or .zip)
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Wings write completed (evidence JSON; Wings status is wings_http_status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMutateResult'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      tags: [Files]
+      operationId: deleteFile
+      summary: Delete one allowlisted jar or zip under mods/ or plugins/
+      description: |
+        Same refuse rule, allowlist, executor, and path policy as writeFile.
+        An allowlisted delete dials Wings `POST /api/servers/{uuid}/files/delete`
+        for that one file. It does not delete host paths.
+      security:
+        - BearerAuth: [files]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Wings delete completed (evidence JSON)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMutateResult'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /servers/{serverId}/backups:
+    parameters:
+      - $ref: '#/components/parameters/ServerId'
+    get:
+      tags: [Backups]
+      operationId: listBackups
+      summary: List backups for server
+      security:
+        - BearerAuth: [backups]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Backup page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackupPage'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Backups]
+      operationId: createBackup
+      summary: Start backup job (progress via Jobs / SSE)
+      security:
+        - BearerAuth: [backups]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackupCreate'
+      responses:
+        '202':
+          description: Backup job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /servers/{serverId}/backups/{backupId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/ServerId'
+      - name: backupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Backups]
+      operationId: restoreBackup
+      summary: Restore a backup (async; refused servers return 403 managed_inventory_denied)
+      security:
+        - BearerAuth: [backups]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Restore job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /servers/{serverId}/metrics:
+    parameters:
+      - $ref: '#/components/parameters/ServerId'
+    get:
+      tags: [Metrics]
+      operationId: getServerMetrics
+      summary: Point-in-time CPU/RAM/disk/network/players
+      security:
+        - BearerAuth: [metrics]
+      responses:
+        '200':
+          description: Metrics snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerMetrics'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /servers/{serverId}/metrics/stream:
+    parameters:
+      - $ref: '#/components/parameters/ServerId'
+    get:
+      tags: [Metrics]
+      operationId: streamServerMetrics
+      summary: Metrics SSE stream
+      description: |
+        `text/event-stream` of ServerMetrics JSON events. Prefer over poll spam
+        for agent clients.
+      security:
+        - BearerAuth: [metrics]
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/Error'
+
+  /eggs:
+    get:
+      tags: [Eggs]
+      operationId: listEggs
+      summary: Read egg/image catalog
+      security:
+        - BearerAuth: [eggs:read]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: nest
+          in: query
+          schema:
+            type: string
+            description: Nest slug or id (for example minecraft)
+      responses:
+        '200':
+          description: Egg page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EggPage'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /eggs/{eggId}:
+    parameters:
+      - name: eggId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Eggs]
+      operationId: getEgg
+      summary: Get one egg
+      security:
+        - BearerAuth: [eggs:read]
+      responses:
+        '200':
+          description: Egg
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Egg'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /me/entitlements:
+    get:
+      tags: [Entitlements]
+      operationId: listMyEntitlements
+      summary: Portal billing entitlements for the caller
+      description: |
+        Links GlassPortal Stripe/billing entitlements to panel capacity.
+        Read-only here; provisioning approval stays on Portal.
+      security:
+        - BearerAuth: [entitlements:read]
+      responses:
+        '200':
+          description: Entitlement list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Entitlement'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /agent-tokens:
+    get:
+      tags: [AgentTokens]
+      operationId: listAgentTokens
+      summary: List agent tokens (metadata only; secret never re-shown)
+      security:
+        - BearerAuth: [agents:manage]
+      responses:
+        '200':
+          description: Token metadata list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentToken'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [AgentTokens]
+      operationId: createAgentToken
+      summary: Mint scoped agent token (TTL required)
+      security:
+        - BearerAuth: [agents:manage]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentTokenCreate'
+      responses:
+        '201':
+          description: Token created; secret returned once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTokenCreated'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /agent-tokens/{tokenId}:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [AgentTokens]
+      operationId: revokeAgentToken
+      summary: Revoke agent token immediately
+      security:
+        - BearerAuth: [agents:manage]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Revoked
+        default:
+          $ref: '#/components/responses/Error'
+
+
+  /migrations/ptero:
+    post:
+      tags: [Migrations]
+      operationId: startPteroMigration
+      summary: Start Ptero panel import (easy migration)
+      description: |
+        Imports servers from a source Pterodactyl panel into GlassGamePanel.
+
+        Servers the caller does not own are skipped. `include_managed_inventory` is
+        forced false in this build. A client boolean, `managed_inventory_allowlist`,
+        and `founder_yes_attestation_id` together are still rejected (no opt-in
+        via request fields). Default is exclude.
+
+        Flow: validate source, discover servers, nodes, and eggs, build a remap
+        plan, copy files and backups when configured, then move pointers.
+        An optional rollback window follows.
+
+        GlassHosting-owned Pterodactyl only in v1. A panel the customer operates
+        is later. Calls should use `mode=inventory_only` or `mode=dry_run`
+        (schema default `inventory_only`). Rollback window default is 72 hours
+        (design stub).
+
+        `GLASSPANEL_MIGRATE_MODE_MAX` is `inventory_only` or `dry_run` only.
+        `import` and `import_and_cutover` are refused. Source read uses
+        `PTERO_SOURCE_API_URL` and `PTERO_SOURCE_API_TOKEN` (names only; the
+        request token is not stored or forwarded). The Wings executor stays `noop`.
+
+        The source Application API token must be scoped to read servers and
+        allocations. Write scope on the source is not required for a plan.
+      security:
+        - BearerAuth: [migrations:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PteroMigrationCreate'
+      responses:
+        '202':
+          description: Migration job accepted
+          headers:
+            Location:
+              description: Migration resource URL
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Migration'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /migrations:
+    get:
+      tags: [Migrations]
+      operationId: listMigrations
+      summary: List migration jobs visible to the caller
+      security:
+        - BearerAuth: [migrations:read]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/MigrationStatus'
+      responses:
+        '200':
+          description: Migration page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrationPage'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /migrations/{migrationId}:
+    parameters:
+      - $ref: '#/components/parameters/MigrationId'
+    get:
+      tags: [Migrations]
+      operationId: getMigration
+      summary: Get migration job status + remap summary
+      security:
+        - BearerAuth: [migrations:read]
+      responses:
+        '200':
+          description: Migration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Migration'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /migrations/{migrationId}/remap:
+    parameters:
+      - $ref: '#/components/parameters/MigrationId'
+    get:
+      tags: [Migrations]
+      operationId: getMigrationRemap
+      summary: Full source→Glass server remap table
+      security:
+        - BearerAuth: [migrations:read]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Remap page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrationRemapPage'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Migrations]
+      operationId: postMigrationRemap
+      summary: Map source egg and node ids to internal Glass keys
+      description: |
+        Plan adjustment. `egg_map` and `node_map` values are internal
+        Glass egg and node keys (`glass.minecraft.paper`, `glass.node.tor5`).
+        Customer Nest IDs are rejected. Refused rows cannot be forced to
+        import. This does not dispatch Wings.
+      security:
+        - BearerAuth: [migrations:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MigrationRemapPatch'
+      responses:
+        '200':
+          description: Updated remap page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrationRemapPage'
+        default:
+          $ref: '#/components/responses/Error'
+    patch:
+      tags: [Migrations]
+      operationId: patchMigrationRemap
+      summary: Adjust pending remap (before execute/cutover)
+      description: |
+        Allowed only while migration status is `planned` or `awaiting_confirm`.
+        Refused rows cannot be forced in.
+      security:
+        - BearerAuth: [migrations:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MigrationRemapPatch'
+      responses:
+        '200':
+          description: Updated remap page slice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrationRemapPage'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /migrations/{migrationId}/confirm:
+    parameters:
+      - $ref: '#/components/parameters/MigrationId'
+    post:
+      tags: [Migrations]
+      operationId: confirmMigration
+      summary: Confirm remap and start copy/cutover
+      security:
+        - BearerAuth: [migrations:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Execute phase started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Migration'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /migrations/{migrationId}/rollback:
+    parameters:
+      - $ref: '#/components/parameters/MigrationId'
+    post:
+      tags: [Migrations]
+      operationId: rollbackMigration
+      summary: Roll back a migration within the rollback window
+      description: |
+        **Rollback notes (stub policy):**
+        - Only while `rollback_until` is in the future and status is `succeeded` or `partial`.
+        - Restores Glass cutover pointers to pre-migration mappings; does **not**
+          delete source Ptero data.
+        - Refused servers stay untouched. They are not imported by default.
+        - File and backup copies already written may be marked orphan.
+          Deleting those copies is a separate confirm and stays off by default.
+        - Source panel URL/token from the original request are not re-used; operator
+          must supply a fresh scoped token if a reverse sync is ever needed (out of v1).
+      security:
+        - BearerAuth: [migrations:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MigrationRollbackRequest'
+      responses:
+        '202':
+          description: Rollback job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Migration'
+        '409':
+          description: Outside rollback window or invalid state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /jobs/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Jobs]
+      operationId: getJob
+      summary: Get async job status
+      security:
+        - BearerAuth: [servers:read]
+      responses:
+        '200':
+          description: Job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Short-lived JWT from GlassPortal OIDC. Scopes are space-delimited.
+        Portal mints agent tokens (`POST /agent-tokens` is a staff or owner
+        session). Agents cannot mint child tokens. Do not use long-lived
+        administrator keys. Mutual TLS between Portal and Wings is transport
+        and is outside this OpenAPI file.
+
+  parameters:
+    ServerId:
+      name: serverId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Glass server UUID (primary). Wings UUID is Server.wings_server_id, not this path id.
+    MigrationId:
+      name: migrationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      description: |
+        Required on all mutating requests. Same key + same body within 24h
+        returns the original result (safe agent retry).
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+      description: Opaque cursor from prior page
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+
+  responses:
+    Error:
+      description: Stable error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              description: Stable machine code
+              enum:
+                - unauthorized
+                - forbidden
+                - managed_inventory_denied
+                - migration_source_unreachable
+                - migration_managed_inventory_excluded
+                - migration_remap_conflict
+                - migration_rollback_expired
+                - not_found
+                - conflict
+                - validation_failed
+                - rate_limited
+                - idempotency_replay
+                - executor_unavailable
+                - internal
+            message:
+              type: string
+            request_id:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+    ServerStatus:
+      type: string
+      enum: [pending, installing, offline, starting, running, stopping, stopping_force, suspended, deleted]
+
+    Server:
+      type: object
+      required: [id, name, status, egg_id, node_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Glass server UUID (SoT primary id)
+        wings_server_id:
+          type: [string, 'null']
+          format: uuid
+          description: Wings/Ptero server UUID ref (phase A executor); null until provisioned
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/ServerStatus'
+        egg_id:
+          type: string
+        node_id:
+          type: string
+          description: Wings node id (phase A)
+        entitlement_id:
+          type: [string, 'null']
+        alloc_pool:
+          type: [string, 'null']
+          description: Named allocation pool. The configured pool is the only one this build accepts.
+        allocations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Allocation'
+        limits:
+          $ref: '#/components/schemas/ResourceLimits'
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ServerPage:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Server'
+        next_cursor:
+          type: [string, 'null']
+
+    ServerCreate:
+      type: object
+      required: [name, egg_id, entitlement_id]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        egg_id:
+          type: string
+        entitlement_id:
+          type: string
+          description: Must be active Portal entitlement owned by caller
+        node_id:
+          type: string
+          description: Optional pin; else scheduler
+        limits:
+          $ref: '#/components/schemas/ResourceLimits'
+        environment:
+          type: object
+          additionalProperties:
+            type: string
+          description: Egg env vars (allowlisted keys only)
+
+    ServerUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        limits:
+          $ref: '#/components/schemas/ResourceLimits'
+        environment:
+          type: object
+          additionalProperties:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    Allocation:
+      type: object
+      required: [ip, port]
+      properties:
+        ip:
+          type: string
+          description: |
+            IPv4 or IPv6 literal. IPv6 rows from the configured pool are
+            local addresses, not a public AAAA.
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        family:
+          type: string
+          enum: [ipv4, ipv6]
+          description: Address family. A Phase A create claims one of each.
+        routable:
+          type: boolean
+          description: False when the IPv6 row is a local address and not a public AAAA.
+        notes:
+          type: string
+        ip_alias:
+          type: string
+        node_id:
+          type: string
+        alloc_pool:
+          type: string
+
+    ResourceLimits:
+      type: object
+      properties:
+        memory_mb:
+          type: integer
+          minimum: 128
+        disk_mb:
+          type: integer
+          minimum: 1024
+        cpu_percent:
+          type: integer
+          minimum: 10
+          maximum: 800
+        databases:
+          type: integer
+          minimum: 0
+        backups:
+          type: integer
+          minimum: 0
+
+    PowerAction:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [start, stop, restart, kill]
+        wait_seconds:
+          type: integer
+          minimum: 0
+          maximum: 300
+          description: Grace period before kill for stop/restart
+
+    ConsoleTicket:
+      type: object
+      required: [ticket, expires_at, websocket_url, server_id, max_ttl_seconds, single_use]
+      description: |
+        Short-lived console WebSocket ticket. TTL is at most 120 seconds,
+        single-use, and bound to `server_id` plus the minting subject.
+        Refused servers are rejected at mint. WebSocket auth is the ticket
+        query parameter only.
+      properties:
+        ticket:
+          type: string
+          description: Opaque single-use credential for WS upgrade
+        expires_at:
+          type: string
+          format: date-time
+          description: Absolute expiry; must be ≤ mint_time + max_ttl_seconds
+        websocket_url:
+          type: string
+          format: uri
+          description: WS URL including ticket as query/param (no Bearer)
+        server_id:
+          type: string
+          format: uuid
+          description: Bound Glass server UUID (must match path serverId)
+        subject:
+          type: string
+          description: Minting subject (Portal sub / agent token id)
+        max_ttl_seconds:
+          type: integer
+          enum: [120]
+          description: Hard cap — ticket TTL must be ≤ 120 seconds
+        single_use:
+          type: boolean
+          enum: [true]
+          description: Ticket is invalidated after first successful WS upgrade
+
+    FileEntry:
+      type: object
+      required: [name, path, type, size, modified_at]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        type:
+          type: string
+          enum: [file, directory, symlink]
+        size:
+          type: integer
+          minimum: 0
+        modified_at:
+          type: string
+          format: date-time
+
+    FileList:
+      type: object
+      required: [path, entries]
+      properties:
+        path:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileEntry'
+
+    FileMutateResult:
+      type: object
+      required: [path, wings_dialed, wings_http_status, request_id]
+      properties:
+        path:
+          type: string
+          description: Volume path under /mods or /plugins
+        written:
+          type: boolean
+        deleted:
+          type: boolean
+        wings_dialed:
+          type: boolean
+        wings_http_status:
+          type: integer
+          description: HTTP status returned by the Wings daemon
+        wings_body_summary:
+          type: string
+        request_id:
+          type: string
+
+    Backup:
+      type: object
+      required: [id, server_id, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        server_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed]
+        bytes:
+          type: [integer, 'null']
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+
+    BackupPage:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Backup'
+        next_cursor:
+          type: [string, 'null']
+
+    BackupCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        ignored:
+          type: array
+          items:
+            type: string
+          description: Glob paths relative to jail root
+
+    ServerMetrics:
+      type: object
+      required: [server_id, collected_at]
+      properties:
+        server_id:
+          type: string
+          format: uuid
+        collected_at:
+          type: string
+          format: date-time
+        cpu_percent:
+          type: number
+        memory_used_mb:
+          type: number
+        memory_limit_mb:
+          type: number
+        disk_used_mb:
+          type: number
+        disk_limit_mb:
+          type: number
+        network_rx_bps:
+          type: number
+        network_tx_bps:
+          type: number
+        players_online:
+          type: [integer, 'null']
+        players_max:
+          type: [integer, 'null']
+
+    Egg:
+      type: object
+      required: [id, name, nest]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        nest:
+          type: string
+        description:
+          type: string
+        docker_image:
+          type: string
+        features:
+          type: array
+          items:
+            type: string
+
+    EggPage:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Egg'
+        next_cursor:
+          type: [string, 'null']
+
+    Entitlement:
+      type: object
+      required: [id, status, sku]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending, active, provisioning_pending, provisioning_failed, suspended, cancelled]
+        sku:
+          type: string
+        server_id:
+          type: [string, 'null']
+          format: uuid
+        portal_ref:
+          type: string
+          description: GlassPortal entitlement or subscription id
+
+    AgentToken:
+      type: object
+      required: [id, name, scopes, expires_at, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        server_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            Non-empty list of Glass server UUIDs. An empty list is not an
+            all-servers grant. Refused server UUIDs must not be included.
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: [string, 'null']
+          format: date-time
+
+    AgentTokenCreate:
+      type: object
+      required: [name, scopes, ttl_seconds, server_ids]
+      description: |
+        Minted by Portal (a person or staff session) only. Agent tokens cannot
+        call this endpoint or otherwise mint child tokens.
+
+        `server_ids` is required and must contain at least one id. An empty
+        list is not an all-servers grant. Migration scopes are not mintable
+        on agent tokens. Staff tokens keep migration scopes on migration
+        paths. Refused server UUIDs must not appear in `server_ids`.
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+              - servers:read
+              - servers:write
+              - power
+              - console
+              - files
+              - backups
+              - metrics
+              - eggs:read
+              - entitlements:read
+              - network
+        server_ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          description: |
+            Required and non-empty. Must not include refused server UUIDs.
+            An omitted or empty list is not an all-servers grant.
+        ttl_seconds:
+          type: integer
+          minimum: 60
+          maximum: 3600
+          description: |
+            Maximum 3600 seconds in this build.
+
+    AgentTokenCreated:
+      allOf:
+        - $ref: '#/components/schemas/AgentToken'
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: Bearer secret; shown once
+
+
+    MigrationStatus:
+      type: string
+      enum:
+        - queued
+        - discovering
+        - planned
+        - awaiting_confirm
+        - copying
+        - cutting_over
+        - succeeded
+        - partial
+        - failed
+        - rolling_back
+        - rolled_back
+        - cancelled
+
+    PteroMigrationCreate:
+      type: object
+      required: [source_base_url, source_api_token]
+      properties:
+        source_base_url:
+          type: string
+          format: uri
+          description: |
+            Source Pterodactyl panel origin. v1 is a GlassHosting-owned panel.
+            A panel the customer operates is later.
+        source_api_token:
+          type: string
+          description: |
+            Scoped Application API token (read servers/allocations/nests/eggs).
+            Stored encrypted at rest; never returned on subsequent GET; redacted in audit.
+        mode:
+          type: string
+          enum: [inventory_only, import, import_and_cutover]
+          default: inventory_only
+          description: |
+            Default is `inventory_only`. `import` and `import_and_cutover`
+            need a separate staff confirm. The source is a GlassHosting-owned
+            Pterodactyl panel in v1. A panel the customer operates is later.
+        include_managed_inventory:
+          type: boolean
+          default: false
+          description: |
+            A client boolean alone is not enough. This build forces the value
+            false, including when `founder_yes_attestation_id` is sent.
+        founder_yes_attestation_id:
+          type: string
+          description: |
+            Server-checked id for a future include path. This build rejects
+            include even when the id is present. A client boolean alone is
+            never enough.
+        managed_inventory_allowlist:
+          type: array
+          items:
+            type: string
+          description: Source server UUIDs the caller asks to include. Ignored while include is forced false.
+          default: []
+        node_map:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional source node id → Glass/Wings node id
+        egg_map:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional source egg id to Glass egg id
+        copy_files:
+          type: boolean
+          default: true
+        copy_backups:
+          type: boolean
+          default: false
+        rollback_window_hours:
+          type: integer
+          minimum: 1
+          maximum: 168
+          default: 72
+          description: Default 72 hours
+        dry_run:
+          type: boolean
+          default: false
+          description: Plan + validate only; no writes to Glass Wings
+
+    Migration:
+      type: object
+      required: [id, kind, status, managed_inventory_excluded_count, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [ptero_import]
+        status:
+          $ref: '#/components/schemas/MigrationStatus'
+        source_base_url:
+          type: string
+          format: uri
+        mode:
+          type: string
+        dry_run:
+          type: boolean
+        include_managed_inventory:
+          type: boolean
+          default: false
+        managed_inventory_excluded_count:
+          type: integer
+          minimum: 0
+          description: Servers skipped because the caller does not own them
+        servers_planned:
+          type: integer
+          minimum: 0
+        servers_imported:
+          type: integer
+          minimum: 0
+        servers_failed:
+          type: integer
+          minimum: 0
+        job_id:
+          type: [string, 'null']
+          format: uuid
+        rollback_until:
+          type: [string, 'null']
+          format: date-time
+        rollback_notes:
+          type: string
+          description: Human-readable rollback policy snapshot for this job
+        error_code:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+
+    MigrationPage:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Migration'
+        next_cursor:
+          type: [string, 'null']
+
+    MigrationRemapRow:
+      type: object
+      required: [source_server_id, action]
+      properties:
+        source_server_id:
+          type: string
+          description: Ptero server UUID
+        source_name:
+          type: string
+        source_node_id:
+          type: string
+        source_egg_id:
+          type: string
+        glass_server_id:
+          type: [string, 'null']
+          format: uuid
+          description: New Glass UUID (primary) when imported
+        wings_server_id:
+          type: [string, 'null']
+          format: uuid
+          description: Wings UUID after executor provision
+        glass_node_id:
+          type: [string, 'null']
+        glass_egg_id:
+          type: [string, 'null']
+        whmcs_service_id:
+          type: [string, 'null']
+          description: Billing service id when the import plan has one
+        managed_inventory:
+          type: boolean
+          default: false
+        action:
+          type: string
+          enum: [import, skip, skip_managed_inventory, merge_existing]
+        notes:
+          type: string
+
+    MigrationRemapPage:
+      type: object
+      required: [migration_id, data]
+      properties:
+        migration_id:
+          type: string
+          format: uuid
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MigrationRemapRow'
+        next_cursor:
+          type: [string, 'null']
+
+    MigrationRemapPatch:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [source_server_id, action]
+            properties:
+              source_server_id:
+                type: string
+              action:
+                type: string
+                enum: [import, skip, skip_managed_inventory, merge_existing]
+              glass_node_id:
+                type: string
+              glass_egg_id:
+                type: string
+              glass_server_id:
+                type: string
+                format: uuid
+                description: For merge_existing
+              glass_egg_key:
+                type: string
+                description: Internal Glass egg key. Numeric Nest IDs are rejected.
+              glass_node_key:
+                type: string
+                description: Internal Glass node key (`glass.node.*`).
+        egg_map:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Source egg id → internal Glass egg key (`glass.minecraft.paper`).
+            Customer Nest IDs are rejected. POST remap accepts this without rows.
+        node_map:
+          type: object
+          additionalProperties:
+            type: string
+          description: Source node id → internal Glass node key (`glass.node.tor5`).
+
+    MigrationRollbackRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+        delete_glass_copies:
+          type: boolean
+          default: false
+          description: Default false. Copies stay in place unless this confirm is set.
+
+    Job:
+      type: object
+      required: [id, type, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [server.create, server.delete, power, backup.create, backup.restore, install, migration.ptero, migration.rollback]
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed, cancelled]
+        server_id:
+          type: [string, 'null']
+          format: uuid
+        progress_percent:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 100
+        error_code:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+        wings_server_id:
+          type: [string, 'null']
+          description: Null while the Wings executor is noop.
+        allocations:
+          type: array
+          description: Present on a succeeded server.create. One IPv4 row and one IPv6 row.
+          items:
+            $ref: '#/components/schemas/Allocation'
+        result:
+          type: object
+          description: |
+            Present when server.create succeeds. `ula_routable` is false and
+            `not_public_aaaa` is true for the configured pool.
+          properties:
+            id:
+              type: string
+              format: uuid
+            glass_server_id:
+              type: string
+              format: uuid
+            wings_server_id:
+              type: [string, 'null']
+            node_id:
+              type: string
+            alloc_pool:
+              type: string
+            ula_prefix:
+              type: string
+            ula_routable:
+              type: boolean
+            not_public_aaaa:
+              type: boolean
+            executor:
+              type: string
+            wings_dispatch:
+              type: boolean
+            entitlement_id:
+              type: string
+            allocations:
+              type: array
+              items:
+                $ref: '#/components/schemas/Allocation'
+
+# Scope catalog for agents and people
+x-glass-scopes:
+  servers:read: List/get servers and jobs the token may see
+  servers:write: Create/update/delete servers
+  power: Power actions
+  console: Console ticket + WebSocket
+  files: File list/read/write/delete in jail
+  backups: Backup list/create/restore
+  metrics: Metrics snapshot + SSE
+  eggs:read: Egg catalog
+  entitlements:read: Caller's Portal entitlements
+  network: Reserved in v1. No allocate or release paths yet
+  migrations:read: List/get Ptero migration jobs and remap tables
+  migrations:write: Start/confirm/patch/rollback Ptero migrations (staff). Servers the caller does not own stay excluded
+  agents:manage: Mint/revoke agent tokens via Portal (people only; agents cannot mint child tokens)
+
+x-glass-managed-inventory-deny:
+  source: embedded-deny-catalog
+  runtime_guard: required
+  error_code: managed_inventory_denied
+  denied_ops:
+    - power
+    - files
+    - console-ticket
+    - backups
+    - delete
+    - restore
+    - server_write
+  description: |
+    Middleware: a request that matches the embedded deny catalog returns 403
+    managed_inventory_denied for denied_ops. Empty agent server_ids still
+    cannot reach those targets. Inventory identifiers are not published in
+    this OpenAPI document; they live only in the machine deny map the
+    runtime embeds and compares.
+
+x-glass-product-boundaries:
+  glass_watch: standalone_module_sso_via_portal_oidc_when_linked
+  glass_game_panel: this_repo_control_plane_only
+  identity_email: unique_across_portal_panel_watch_merge_on_match
+
+x-glass-locked-defaults:
+  base_url_prod_documented: https://panel-api.glasshosting.com/v1
+  base_url_local: http://127.0.0.1:8080/v1
+  exposure: local_bind_no_public_ui
+  jwt_aud_iss: bound_to_configured_env
+  server_id: glass_uuid_with_wings_ref
+  auth: portal_oidc
+  agent_tokens_minted_by: portal
+  agent_child_tokens: false
+  console: ticket_plus_websocket_only
+  agent_files: api_only
+  human_sftp: later
+  rcon: v1.1
+  network_scope: reserved_only
+  rate_limit_mutate_rpm: 60
+  rate_limit_read_rpm: 300
+  rate_limit_gate: enforce_60_300_and_refuse_catalog
+  repo: FuzzySpace/GlassGamePanel
+  migration_source: own_ptero_first
+  migration_mvp_mode: inventory_only
+  migration_rollback_hours: 72
+  managed_inventory: exclude_by_default
+  managed_inventory_opt_in: server_checked_id_required
+  managed_inventory_opt_in_test: forced_false
+  console_ticket_max_ttl_seconds: 120
+  console_ticket_single_use: true
+  console_ws_auth: ticket_query_param_only
+  agent_token_server_ids_required: true
+  agent_token_ttl_max_seconds_test: 3600
+  agent_token_migrations_scopes: excluded_until_post_test
+
+x-glass-constraints:
+  - Refused servers stay on the deny catalog. Power, files, console tickets, backups, delete, restore, and server write return 403 managed_inventory_denied
+  - include_managed_inventory stays false in this build
+  - Agent tokens require server_ids with at least one id. Migration scopes are not mintable. ttl_seconds max is 3600
+  - Console ticket TTL is at most 120 seconds, single-use, and bound to serverId plus subject. WebSocket auth is the ticket only
+  - Local default listen. No public OpenAPI UI on the process
+  - The default executor does not dial Wings. Refused servers are not mutated
+  - Panel import may plan inventory_only against servers the caller may import
+  - Glass Watch stays a separate product. Portal sign-in when the products are linked
+  - The same email is one account across Portal, GlassGamePanel, and Watch
+  - Rate limits are 60 mutate and 300 read requests per minute per token
+  - This API does not write billing and does not charge cards
+  - This draft is not a production deploy
+  - Repository is FuzzySpace/GlassGamePanel
+  - Rollback does not delete refused servers. Deleting Glass copies needs a separate confirm
+  - RCON verbs are deferred to API v1.1
+  - Customer-operated Pterodactyl import is later. v1 plans a GlassHosting-owned panel first

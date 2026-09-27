@@ -1,0 +1,24 @@
+[Unit]
+Description=Glass Game Panel TEST API (Wings noop)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Unprivileged. DynamicUser avoids depending on a pre-created account.
+DynamicUser=yes
+Environment=PANEL_ENV=test
+# CT316 underlay only. The WG gateway allowlist is the exposure control.
+# Do not change this to a public address. Default without this line is 127.0.0.1:8080.
+Environment=LISTEN_ADDR=0.0.0.0:8080
+EnvironmentFile=/etc/glass/panel-api-test.env
+ExecStart=/usr/local/bin/panel-api-test
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

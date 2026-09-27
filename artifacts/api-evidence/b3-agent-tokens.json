@@ -1,0 +1,131 @@
+{
+  "cases": [
+    {
+      "name": "reject_scope_migrations:write",
+      "method": "POST",
+      "path": "/v1/agent-tokens",
+      "status": 400,
+      "code": "validation_failed",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "reject_scope_migrations:read",
+      "method": "POST",
+      "path": "/v1/agent-tokens",
+      "status": 400,
+      "code": "validation_failed",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "reject_scope_agents:manage",
+      "method": "POST",
+      "path": "/v1/agent-tokens",
+      "status": 400,
+      "code": "validation_failed",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "reject_empty_server_ids",
+      "method": "POST",
+      "path": "/v1/agent-tokens",
+      "status": 400,
+      "code": "validation_failed",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "reject_omitted_server_ids",
+      "method": "POST",
+      "path": "/v1/agent-tokens",
+      "status": 400,
+      "code": "validation_failed",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "reject_deny_uuid_in_server_ids",
+      "method": "POST",
+      "path": "/v1/agent-tokens",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "reject_ttl_3601",
+      "method": "POST",
+      "path": "/v1/agent-tokens",
+      "status": 400,
+      "code": "validation_failed",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "reject_ttl_59",
+      "method": "POST",
+      "path": "/v1/agent-tokens",
+      "status": 400,
+      "code": "validation_failed",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "reject_child_token",
+      "method": "POST",
+      "path": "/v1/agent-tokens",
+      "status": 403,
+      "code": "forbidden",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "mint_ttl_3600",
+      "method": "POST",
+      "path": "/v1/agent-tokens",
+      "status": 201,
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "minted_agent_hs256_list",
+      "method": "GET",
+      "path": "/v1/servers",
+      "status": 200,
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "agent_cannot_call_migrations",
+      "method": "POST",
+      "path": "/v1/migrations/ptero",
+      "status": 403,
+      "code": "forbidden",
+      "wings_dispatch": 0,
+      "pass": true
+    }
+  ],
+  "gate": "B3",
+  "issued": {
+    "forbidden_scopes_absent": true,
+    "server_ids_non_empty": true,
+    "token_use": "agent",
+    "ttl_seconds": 3600
+  },
+  "mintable_scopes": [
+    "servers:read",
+    "servers:write",
+    "power",
+    "console",
+    "files",
+    "backups",
+    "metrics",
+    "eggs:read",
+    "entitlements:read",
+    "network"
+  ],
+  "pass": true,
+  "proves": "Agent mint requires non-empty server_ids, rejects managed-inventory UUIDs, rejects migrations:read, migrations:write, and agents:manage, caps ttl_seconds at 3600, and does not let agent tokens mint children. The minted HS256 agent token is accepted on GET /v1/servers."
+}

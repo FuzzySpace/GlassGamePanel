@@ -1,0 +1,267 @@
+{
+  "gate": "B1",
+  "proves": "Managed-inventory deny is middleware for power, files, console-ticket, backups/restore, delete, server write, and GET /v1/servers/{serverId}. GET /v1/servers returns the in-memory commercial fixture to an agent token scoped to that id and does not list denied servers. Empty and over-broad agent server_ids still cannot reach denied targets. Deny runs before scope checks, idempotency, and any executor.",
+  "cases": [
+    {
+      "name": "power_deny_uuid_d0ea9cbd-9706-443b-a734-d98a5055a450",
+      "method": "POST",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_deny_uuid_f060b25f-d720-4f36-ad00-2edba918eef0",
+      "method": "POST",
+      "path": "/v1/servers/f060b25f-d720-4f36-ad00-2edba918eef0/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_deny_uuid_fdbfea6b-83aa-4fa3-8456-86f84369916c",
+      "method": "POST",
+      "path": "/v1/servers/fdbfea6b-83aa-4fa3-8456-86f84369916c/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_deny_uuid_54f48d15-89e8-44e3-949c-f980547aedaf",
+      "method": "POST",
+      "path": "/v1/servers/54f48d15-89e8-44e3-949c-f980547aedaf/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_deny_uuid_cfe08e83-08f9-4515-a5d3-f84737b6723a",
+      "method": "POST",
+      "path": "/v1/servers/cfe08e83-08f9-4515-a5d3-f84737b6723a/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_deny_uuid_eaf90a23-50c5-43c5-bd57-9bd25bf6b22a",
+      "method": "POST",
+      "path": "/v1/servers/eaf90a23-50c5-43c5-bd57-9bd25bf6b22a/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_deny_uuid_8fc56418-30ac-4273-9e9a-1cdf9a24d7fd",
+      "method": "POST",
+      "path": "/v1/servers/8fc56418-30ac-4273-9e9a-1cdf9a24d7fd/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_deny_uuid_10f50377-a420-4269-8a09-a8fac9da27b8",
+      "method": "POST",
+      "path": "/v1/servers/10f50377-a420-4269-8a09-a8fac9da27b8/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "console_ticket_deny_uuid",
+      "method": "POST",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/console-ticket",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "files_list_deny_uuid",
+      "method": "GET",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/files?path=/",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "backup_restore_deny_uuid",
+      "method": "POST",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/backups/22222222-2222-4222-8222-222222222222/restore",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "server_patch_deny_uuid",
+      "method": "PATCH",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "server_delete_deny_uuid",
+      "method": "DELETE",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "server_create_wings_uuid",
+      "method": "POST",
+      "path": "/v1/servers",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "server_create_sid_43",
+      "method": "POST",
+      "path": "/v1/servers",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "server_create_whmcs_ct211",
+      "method": "POST",
+      "path": "/v1/servers",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_query_sid_99",
+      "method": "POST",
+      "path": "/v1/servers/11111111-1111-4111-8111-111111111111/power?sid=99",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_query_external_id_30",
+      "method": "POST",
+      "path": "/v1/servers/11111111-1111-4111-8111-111111111111/power?external_id=30",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_query_whmcs_ct210",
+      "method": "POST",
+      "path": "/v1/servers/11111111-1111-4111-8111-111111111111/power?whmcs_ct=210",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "power_query_whmcs_ct1220",
+      "method": "POST",
+      "path": "/v1/servers/11111111-1111-4111-8111-111111111111/power?whmcs_ct=CT1220",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "empty_server_ids_still_denied",
+      "method": "POST",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "overbroad_server_ids_still_denied",
+      "method": "POST",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "agent_without_deny_id_still_denied",
+      "method": "POST",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "deny_before_scope_check",
+      "method": "POST",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "deny_before_idempotency",
+      "method": "POST",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450/power",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "empty_server_ids_non_deny_forbidden",
+      "method": "POST",
+      "path": "/v1/servers/11111111-1111-4111-8111-111111111111/power",
+      "status": 403,
+      "code": "forbidden",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "overbroad_server_ids_non_deny_forbidden",
+      "method": "POST",
+      "path": "/v1/servers/11111111-1111-4111-8111-111111111111/power",
+      "status": 403,
+      "code": "forbidden",
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "list_servers_agent_non_deny",
+      "method": "GET",
+      "path": "/v1/servers",
+      "status": 200,
+      "wings_dispatch": 0,
+      "pass": true
+    },
+    {
+      "name": "get_server_deny_uuid",
+      "method": "GET",
+      "path": "/v1/servers/d0ea9cbd-9706-443b-a734-d98a5055a450",
+      "status": 403,
+      "code": "managed_inventory_denied",
+      "wings_dispatch": 0,
+      "pass": true
+    }
+  ],
+  "pass": true
+}

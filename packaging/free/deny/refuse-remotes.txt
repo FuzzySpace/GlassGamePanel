@@ -1,0 +1,15 @@
+# Panel addresses this free DIY Wings installer will not enroll.
+# Matching is case-insensitive over installer inputs (environment, flags,
+# pasted config, panel URL, remote, node token, and file paths you supply).
+# Lines starting with # are comments. IP lines are matched with digit boundaries.
+# The installer also refuses the 10.99.0.0/24 range and GlassHosting test
+# names that are not an operator-owned panel.
+panel-api.glasshosting.com
+panel.glasshosting.com
+panel-api-test.glasshosting.internal
+panel-api-test
+glasshosting.com
+glasshosting.internal
+45.45.239.7
+10.99.0.40
+10.10.1.43

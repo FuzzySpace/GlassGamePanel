@@ -1,0 +1,14 @@
+{
+  "gateway_note": "DevOps WG gateway already enforces 60 mutate / 300 read rpm per token (ops-attested). This binary enforces the same caps and refuses configuration above them.",
+  "mutate_allowed": 60,
+  "mutate_next_code": "rate_limited",
+  "mutate_next_status": 429,
+  "mutate_rpm": 60,
+  "pass": true,
+  "read_allowed": 300,
+  "read_next_code": "rate_limited",
+  "read_next_status": 429,
+  "read_rpm": 300,
+  "runtime_enforcement": "in-process fixed window per token jti",
+  "wings_dispatch": 0
+}

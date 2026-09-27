@@ -1,0 +1,37 @@
+{
+  "apply": "gated apply — not auto-published",
+  "aud": "https://panel-api-test.glasshosting.internal",
+  "cases": [
+    {
+      "code": "unauthorized",
+      "method": "GET",
+      "name": "staff_hs256",
+      "path": "/v1/servers",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "name": "staff_rs256_list",
+      "path": "/v1/servers",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "name": "minted_agent_hs256_list",
+      "path": "/v1/servers",
+      "status": 200
+    },
+    {
+      "code": "managed_inventory_denied",
+      "method": "GET",
+      "name": "managed_inventory_deny_uuid",
+      "path": "/v1/servers/{denyUUID}",
+      "status": 403
+    }
+  ],
+  "gate": "Gate 2b Option A",
+  "iss": "https://portal-test.glasshosting.internal",
+  "pass": true,
+  "proves": "Staff HS256 is 401. Portal-like staff RS256 is 200 on GET /v1/servers. Panel-minted agent HS256 is 200 on GET /v1/servers. A managed-inventory deny UUID is 403 managed_inventory_denied. Wings dispatch stays 0.",
+  "wings_dispatch": 0
+}
