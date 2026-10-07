@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FuzzySpace/GlassGamePanel/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -84,7 +85,13 @@ func Parse(secret []byte, wantIss, wantAud, raw string, now time.Time) (Principa
 }
 
 func principalFromClaims(c Claims, wantIss, wantAud, path string) (Principal, error) {
-	if IsProdIssuer(c.Issuer) || AudienceHasProd(c.Audience) {
+	// Public panel hosts stay closed on every plane.
+	// TEST also rejects the prod Portal issuer. The prod day-1 plane
+	// accepts that issuer only when iss and aud match the configured pins.
+	if AudienceHasProd(c.Audience) || isPublicPanelIssuer(c.Issuer) {
+		return Principal{}, ErrProdRejected
+	}
+	if !config.ProdPlane(wantIss, wantAud) && IsProdIssuer(c.Issuer) {
 		return Principal{}, ErrProdRejected
 	}
 	if c.Issuer != wantIss {
@@ -133,6 +140,18 @@ func principalFromClaims(c Claims, wantIss, wantAud, path string) (Principal, er
 		MintedBy:  c.MintedBy,
 		AuthPath:  path,
 	}, nil
+}
+
+// isPublicPanelIssuer reports public panel and auth hosts.
+// The prod Portal issuer is not public; the prod plane can accept it.
+func isPublicPanelIssuer(iss string) bool {
+	s := strings.ToLower(strings.TrimSpace(iss))
+	switch s {
+	case "https://panel-api.glasshosting.com", "https://auth.glasshosting.com":
+		return true
+	default:
+		return strings.Contains(s, "panel-api.glasshosting.com")
+	}
 }
 
 // IsProdIssuer reports Glass prod Portal/panel issuers.

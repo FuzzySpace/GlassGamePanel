@@ -28,7 +28,7 @@ const (
 
 // Validator verifies Portal OIDC RS256 tokens via JWKS, and HS256 agent tokens
 // with the panel mint secret. Staff tokens are RS256/JWKS only. Both accepted
-// paths require the configured TEST issuer and audience.
+// paths require the configured issuer and audience.
 // This type does not mint Portal tokens.
 type Validator struct {
 	hmacSecret []byte

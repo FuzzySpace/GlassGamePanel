@@ -44,8 +44,8 @@ const (
 	scopeMigrationsR  = "migrations:read"
 )
 
-// Server is the TEST-only control plane. The default executor is noop and
-// does not dial. PANEL_WINGS_EXECUTOR=real dials Wings only for an allowlisted
+// Server is the control plane for the test and prod binaries. The default
+// executor is noop and does not dial. PANEL_WINGS_EXECUTOR=real dials Wings only for an allowlisted
 // non–managed-inventory power, file list, or path-policy file write when the daemon
 // origin and token are set. File writes stay under mods/ or plugins/ and never
 // run for a managed-inventory target.
@@ -111,7 +111,7 @@ type route struct {
 // New builds the HTTP API. It refuses invalid TEST config and a drifted deny map.
 func New(cfg config.Config) (*Server, error) {
 	cfg = cfg.WithCreateDefaults()
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateAPI(); err != nil {
 		return nil, err
 	}
 	var source sourceAPI
@@ -192,7 +192,7 @@ func (s *Server) DenySHA256() string { return s.deny.SHA256() }
 // Handler is the public HTTP handler.
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Glass-Runtime", "panel-api-test")
+		w.Header().Set("X-Glass-Runtime", s.cfg.RuntimeName())
 		w.Header().Set("X-Glass-Executor", s.executorName())
 		w.Header().Set("X-Glass-Wings-Dispatch", "0")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -310,8 +310,13 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, rid string
 		msg := "unauthorized"
 		var details any
 		if errors.Is(err, auth.ErrProdRejected) {
-			msg = "prod Portal tokens are rejected on TEST"
-			details = map[string]any{"reason": "prod_aud_or_iss_rejected"}
+			if s.cfg.Env == "prod" {
+				msg = "public panel tokens are rejected"
+				details = map[string]any{"reason": "public_aud_or_iss_rejected"}
+			} else {
+				msg = "prod Portal tokens are rejected on TEST"
+				details = map[string]any{"reason": "prod_aud_or_iss_rejected"}
+			}
 		}
 		writeError(w, http.StatusUnauthorized, "unauthorized", msg, rid, details)
 		return auth.Principal{}, false

@@ -21,6 +21,10 @@ func TestDenyMapIntact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	const denySHA = "a511e974bb08f6f19f612f19e1bb9cb2693489eeb8d4869351e42e0279824097"
+	if s.SHA256() != denySHA {
+		t.Fatalf("deny sha256 %s", s.SHA256())
+	}
 	wantUUIDs := []string{
 		"d0ea9cbd-9706-443b-a734-d98a5055a450",
 		"f060b25f-d720-4f36-ad00-2edba918eef0",

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/FuzzySpace/GlassGamePanel/internal/alloc"
+	"github.com/FuzzySpace/GlassGamePanel/internal/deny"
 )
 
 const (
@@ -22,27 +23,42 @@ const (
 	MaxReadRPM        = 300
 	TestHost          = "panel-api-test.glasshosting.internal"
 	ProdHost          = "panel-api.glasshosting.com"
+	// ProdInternalHost is the day-1 internal name. The public ProdHost stays refused.
+	ProdInternalHost = "panel-api.glasshosting.internal"
+	ProdJWTIss       = "https://portal.glasshosting.com"
+	ProdJWTAud       = "https://panel-api.glasshosting.internal"
+	// ProdJWTJWKSURL is the prod Portal JWKS. A day-1 local origin is also accepted.
+	ProdJWTJWKSURL = "https://portal.glasshosting.com/oidc/jwks.json"
+	ProdPublicBase = "https://panel-api.glasshosting.internal"
+	ProdJWTKID     = "ggp-prod-1"
+	// TestJWTKID is refused as the prod primary kid.
+	TestJWTKID = "ggp-test-1"
 
 	// Phase B hard ceiling. import and import_and_cutover are never accepted.
 	MigrateModeInventoryOnly = "inventory_only"
 	MigrateModeDryRun        = "dry_run"
 	WingsExecutorNoop        = "noop"
-	// WingsExecutorReal is accepted by this build. Unset stays noop.
-	// Live TEST and prod must not set it without a later stamp.
+	// WingsExecutorReal is accepted by the TEST contract. Unset stays noop.
+	// ValidateProd accepts noop only. A live dial needs a later stamp.
 	WingsExecutorReal = "real"
 	// ManagedInventoryCHINodeID is the panel node that owns managed-inventory SIDs.
 	// It must never appear in the create allowlist or the Wings allowlist.
 	ManagedInventoryCHINodeID = "1"
 )
 
-// Config is the TEST runtime configuration. There is no prod mode.
+// Config is process configuration for one plane.
+// The test binary loads it with Load and ValidateTest.
+// The prod binary loads it with LoadProd and ValidateProd.
 type Config struct {
-	Env           string
-	ListenAddr    string
-	JWTSecret     []byte
-	JWTIss        string
-	JWTAud        string
-	JWTJWKSURL    string
+	Env        string
+	ListenAddr string
+	JWTSecret  []byte
+	JWTIss     string
+	JWTAud     string
+	JWTJWKSURL string
+	// JWTKID is PANEL_JWT_KID. ValidateProd requires ProdJWTKID.
+	// ValidateTest does not read it.
+	JWTKID        string
 	PublicBaseURL string
 	MutateRPM     int
 	ReadRPM       int
@@ -105,17 +121,69 @@ func (a WingsAllowlist) HasNode(id string) bool {
 	return ok
 }
 
-// Load reads environment variables. LISTEN_ADDR defaults to loopback.
+// planeDefaults are the values used when the corresponding env var is unset.
+// The test plane defaults to PANEL_ENV=test. The prod plane leaves PANEL_ENV
+// empty so an unset value cannot boot as test.
+type planeDefaults struct {
+	env        string
+	iss        string
+	aud        string
+	jwks       string
+	publicBase string
+	kid        string
+}
+
+// Load reads the TEST environment. LISTEN_ADDR defaults to loopback.
 // 0.0.0.0:8080 is accepted only when set explicitly for the CT316 underlay.
+// PANEL_ENV must be test. Prod settings are refused here even when every
+// other variable matches the prod pins.
 func Load() (Config, error) {
+	c, err := loadFromEnv(planeDefaults{
+		env:        "test",
+		iss:        DefaultJWTIss,
+		aud:        DefaultJWTAud,
+		jwks:       DefaultJWTJWKSURL,
+		publicBase: DefaultPublicBase,
+	})
+	if err != nil {
+		return Config{}, err
+	}
+	if err := c.ValidateTest(); err != nil {
+		return Config{}, err
+	}
+	return c, nil
+}
+
+// LoadProd reads the prod environment. PANEL_ENV must be set to prod.
+// Unset PANEL_ENV is refused. TEST issuer, audience, and kid are refused.
+func LoadProd() (Config, error) {
+	c, err := loadFromEnv(planeDefaults{
+		env:        "",
+		iss:        ProdJWTIss,
+		aud:        ProdJWTAud,
+		jwks:       ProdJWTJWKSURL,
+		publicBase: ProdPublicBase,
+		kid:        ProdJWTKID,
+	})
+	if err != nil {
+		return Config{}, err
+	}
+	if err := c.ValidateProd(); err != nil {
+		return Config{}, err
+	}
+	return c, nil
+}
+
+func loadFromEnv(def planeDefaults) (Config, error) {
 	c := Config{
-		Env:                 getenv("PANEL_ENV", "test"),
+		Env:                 getenv("PANEL_ENV", def.env),
 		ListenAddr:          getenv("LISTEN_ADDR", DefaultListenAddr),
 		JWTSecret:           []byte(os.Getenv("PANEL_JWT_HMAC_SECRET")),
-		JWTIss:              getenv("PANEL_JWT_ISS", DefaultJWTIss),
-		JWTAud:              getenv("PANEL_JWT_AUD", DefaultJWTAud),
-		JWTJWKSURL:          getenv("PANEL_JWT_JWKS_URL", DefaultJWTJWKSURL),
-		PublicBaseURL:       getenv("PANEL_PUBLIC_BASE_URL", DefaultPublicBase),
+		JWTIss:              getenv("PANEL_JWT_ISS", def.iss),
+		JWTAud:              getenv("PANEL_JWT_AUD", def.aud),
+		JWTJWKSURL:          getenv("PANEL_JWT_JWKS_URL", def.jwks),
+		JWTKID:              strings.TrimSpace(getenv("PANEL_JWT_KID", def.kid)),
+		PublicBaseURL:       getenv("PANEL_PUBLIC_BASE_URL", def.publicBase),
 		MutateRPM:           MaxMutateRPM,
 		ReadRPM:             MaxReadRPM,
 		MigrateDisabled:     migrateDisabled(),
@@ -156,14 +224,28 @@ func Load() (Config, error) {
 		}
 		c.ReadRPM = n
 	}
-	if err := c.Validate(); err != nil {
-		return Config{}, err
-	}
 	return c, nil
 }
 
-// Validate rejects prod settings, public binds, and rate limits above 60/300.
+// Validate is the TEST contract. Load and existing callers use it.
+// It does not accept PANEL_ENV=prod.
 func (c Config) Validate() error {
+	return c.ValidateTest()
+}
+
+// ValidateAPI selects the contract for a config handed to the HTTP server.
+// Env prod uses ValidateProd. Every other env uses the TEST contract.
+// The test entrypoint never reaches this with prod, because Load calls ValidateTest.
+func (c Config) ValidateAPI() error {
+	if c.Env == "prod" {
+		return c.ValidateProd()
+	}
+	return c.Validate()
+}
+
+// ValidateTest rejects any env other than test, prod issuers and audiences,
+// public binds, and rate limits above 60/300.
+func (c Config) ValidateTest() error {
 	if c.Env != "test" {
 		return fmt.Errorf("PANEL_ENV must be test (got %q); this binary is TEST-only", c.Env)
 	}
@@ -224,6 +306,135 @@ func (c Config) Validate() error {
 	}
 	if err := validateWingsDial(c.WingsBaseURL, c.WingsToken); err != nil {
 		return err
+	}
+	return nil
+}
+
+// ValidateProd is the day-1 prod contract.
+// It accepts the prod issuer, the internal audience and public base URL,
+// kid ggp-prod-1, executor noop, and both Wings dial settings empty.
+// It refuses the TEST issuer, audience, and kid, the public panel host,
+// rate limits above 60/300, executor real, and managed-inventory allowlist entries.
+// There is no opt-in switch.
+func (c Config) ValidateProd() error {
+	if c.Env != "prod" {
+		return fmt.Errorf("PANEL_ENV must be prod (got %q); this binary is prod-only", c.Env)
+	}
+	if err := ValidateListen(c.ListenAddr); err != nil {
+		return err
+	}
+	if len(c.JWTSecret) < 16 {
+		return fmt.Errorf("PANEL_JWT_HMAC_SECRET must be at least 16 bytes")
+	}
+	switch string(c.JWTSecret) {
+	case "replace-with-test-hmac-secret", "replace-with-prod-hmac-secret":
+		return fmt.Errorf("PANEL_JWT_HMAC_SECRET is still the example placeholder")
+	}
+	if c.JWTKID == TestJWTKID {
+		return fmt.Errorf("PANEL_JWT_KID must not be the TEST kid %s", TestJWTKID)
+	}
+	if c.JWTKID != ProdJWTKID {
+		return fmt.Errorf("PANEL_JWT_KID must be %s", ProdJWTKID)
+	}
+	if err := ValidateProdJWKSURL(c.JWTJWKSURL); err != nil {
+		return err
+	}
+	if c.JWTIss == DefaultJWTIss {
+		return fmt.Errorf("PANEL_JWT_ISS must not be the TEST issuer")
+	}
+	if c.JWTIss != ProdJWTIss {
+		return fmt.Errorf("PANEL_JWT_ISS must be %s", ProdJWTIss)
+	}
+	if c.JWTAud == DefaultJWTAud {
+		return fmt.Errorf("PANEL_JWT_AUD must not be the TEST audience")
+	}
+	if isProdAudience(c.JWTAud) || strings.Contains(strings.ToLower(c.JWTAud), ProdHost) {
+		return fmt.Errorf("PANEL_JWT_AUD must not be the public panel audience")
+	}
+	if c.JWTAud != ProdJWTAud {
+		return fmt.Errorf("PANEL_JWT_AUD must be %s", ProdJWTAud)
+	}
+	u, err := url.Parse(c.PublicBaseURL)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("PANEL_PUBLIC_BASE_URL must be an https URL")
+	}
+	if strings.Contains(strings.ToLower(c.PublicBaseURL), ProdHost) {
+		return fmt.Errorf("PANEL_PUBLIC_BASE_URL must not be the public panel host")
+	}
+	if strings.EqualFold(u.Hostname(), TestHost) {
+		return fmt.Errorf("PANEL_PUBLIC_BASE_URL must not be the TEST host")
+	}
+	if u.Scheme != "https" || !strings.EqualFold(u.Hostname(), ProdInternalHost) {
+		return fmt.Errorf("PANEL_PUBLIC_BASE_URL must be %s", ProdPublicBase)
+	}
+	if u.Path != "" && u.Path != "/" {
+		return fmt.Errorf("PANEL_PUBLIC_BASE_URL must not include a path")
+	}
+	if u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return fmt.Errorf("PANEL_PUBLIC_BASE_URL must not include a query, fragment, or userinfo")
+	}
+	if c.MutateRPM < 1 || c.MutateRPM > MaxMutateRPM {
+		return fmt.Errorf("mutate rpm must be 1..%d", MaxMutateRPM)
+	}
+	if c.ReadRPM < 1 || c.ReadRPM > MaxReadRPM {
+		return fmt.Errorf("read rpm must be 1..%d", MaxReadRPM)
+	}
+	switch c.MigrateModeMax {
+	case "", MigrateModeInventoryOnly, MigrateModeDryRun:
+	default:
+		return fmt.Errorf("GLASSPANEL_MIGRATE_MODE_MAX hard ceiling is inventory_only or dry_run")
+	}
+	c = c.WithCreateDefaults()
+	if c.WingsExecutor != WingsExecutorNoop {
+		return fmt.Errorf("PANEL_WINGS_EXECUTOR must be noop on prod day-1 (got %q)", c.WingsExecutor)
+	}
+	if strings.TrimSpace(c.WingsBaseURL) != "" || c.WingsToken != "" {
+		return fmt.Errorf("PANEL_WINGS_BASE_URL and PANEL_WINGS_TOKEN must both be empty on prod day-1")
+	}
+	if err := validateCreatePolicy(c); err != nil {
+		return err
+	}
+	if err := validateWingsAllowlist(c.WingsAllowlist); err != nil {
+		return err
+	}
+	if err := validateProdManagedInventory(c); err != nil {
+		return err
+	}
+	if err := validatePteroSource(c.PteroSourceAPIURL, c.PteroSourceAPIToken); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateProdManagedInventory refuses managed-inventory servers and node 1
+// on the create and Wings allowlists. Opt-in stays closed.
+func validateProdManagedInventory(c Config) error {
+	d, err := deny.Load()
+	if err != nil {
+		return err
+	}
+	for _, id := range c.CreateNodeAllowlist {
+		if id == ManagedInventoryCHINodeID {
+			return fmt.Errorf("PANEL_CREATE_NODE_ALLOWLIST must not include managed-inventory node %s", ManagedInventoryCHINodeID)
+		}
+		sid, sidErr := strconv.Atoi(id)
+		if sidErr == nil && d.IsManagedInventorySID(sid) {
+			return fmt.Errorf("PANEL_CREATE_NODE_ALLOWLIST must not include managed-inventory node %s", id)
+		}
+	}
+	for id := range c.WingsAllowlist.Nodes {
+		if id == ManagedInventoryCHINodeID {
+			return fmt.Errorf("PANEL_WINGS_ALLOWLIST must not include managed-inventory node %s", ManagedInventoryCHINodeID)
+		}
+		sid, sidErr := strconv.Atoi(id)
+		if sidErr == nil && d.IsManagedInventorySID(sid) {
+			return fmt.Errorf("PANEL_WINGS_ALLOWLIST must not include managed-inventory node %s", id)
+		}
+	}
+	for id := range c.WingsAllowlist.UUIDs {
+		if d.IsManagedInventoryUUID(id) {
+			return fmt.Errorf("PANEL_WINGS_ALLOWLIST must not include a managed-inventory server")
+		}
 	}
 	return nil
 }
@@ -553,6 +764,20 @@ func (c Config) AuthMode() string {
 	return "agent-hs256-only"
 }
 
+// RuntimeName is the X-Glass-Runtime header value.
+// prod is panel-api. test, and any other env, is panel-api-test.
+func (c Config) RuntimeName() string {
+	if c.Env == "prod" {
+		return "panel-api"
+	}
+	return "panel-api-test"
+}
+
+// ProdPlane reports the day-1 prod issuer and internal audience pair.
+func ProdPlane(iss, aud string) bool {
+	return iss == ProdJWTIss && aud == ProdJWTAud
+}
+
 // ValidateJWKSURL accepts an empty URL or an absolute http(s) JWKS URL.
 // An empty URL means staff RS256 cannot be verified. Agent HS256 mint still
 // works. Staff HS256 is never accepted. Prod Portal and prod panel hosts are rejected.
@@ -582,6 +807,50 @@ func ValidateJWKSURL(raw string) error {
 		return fmt.Errorf("PANEL_JWT_JWKS_URL must be the TEST Portal JWKS, not a prod host")
 	}
 	return nil
+}
+
+// ValidateProdJWKSURL accepts the prod Portal JWKS or a day-1 local origin.
+// The TEST Portal JWKS and the public panel host are refused.
+// An empty URL is refused so staff RS256 has a JWKS to verify against.
+func ValidateProdJWKSURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("PANEL_JWT_JWKS_URL is required")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.Hostname() == "" {
+		return fmt.Errorf("PANEL_JWT_JWKS_URL must be an absolute http(s) URL")
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return fmt.Errorf("PANEL_JWT_JWKS_URL scheme must be http or https")
+	}
+	if u.User != nil {
+		return fmt.Errorf("PANEL_JWT_JWKS_URL must not include userinfo")
+	}
+	if u.Path == "" || u.Path == "/" {
+		return fmt.Errorf("PANEL_JWT_JWKS_URL must include a JWKS path")
+	}
+	if strings.Contains(strings.ToLower(u.Path), "/.well-known") {
+		return fmt.Errorf("PANEL_JWT_JWKS_URL must not use /.well-known/")
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "portal-test.glasshosting.internal" || host == TestHost || strings.Contains(host, "portal-test.") {
+		return fmt.Errorf("PANEL_JWT_JWKS_URL must not be the TEST Portal JWKS")
+	}
+	if host == ProdHost || strings.Contains(host, ProdHost) {
+		return fmt.Errorf("PANEL_JWT_JWKS_URL must not be the public panel host")
+	}
+	switch host {
+	case "portal.glasshosting.com":
+		if u.Scheme != "https" {
+			return fmt.Errorf("PANEL_JWT_JWKS_URL prod portal origin must be https")
+		}
+		return nil
+	case "127.0.0.1", "::1", "localhost", "10.10.1.46", "10.99.0.41":
+		return nil
+	default:
+		return fmt.Errorf("PANEL_JWT_JWKS_URL host %q is not the prod portal or a day-1 local origin", host)
+	}
 }
 
 // JWKSHost is the host of PANEL_JWT_JWKS_URL, or empty when unset.
