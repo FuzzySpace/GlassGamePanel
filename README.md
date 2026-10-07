@@ -17,6 +17,7 @@ One-click packaging for **your** machine and **your** panel — branded GlassGam
 - **Executor:** Wings (Ptero-shaped) behind this API; Proxmox driver later
 - **Managed inventory:** GlassHosting-managed servers you do not own are refused by default (deny map in-repo)
 - **Test runtime:** `cmd/panel-api-test` — local/test control plane; Wings dials only when explicitly allowlisted
+- **Prod runtime:** `cmd/panel-api` — separate binary; `PANEL_ENV=prod`; public hostname stays refused; Wings dial stays off
 - **Glass Watch:** standalone product; SSO via Portal when linked — not this monolith
 - **Identity:** same-email unique across Portal / panel / Watch (merge on match)
 
@@ -53,14 +54,15 @@ Minimal Go control plane for the test gate. The default executor is noop and doe
 
 ```bash
 go test ./...
-go build -o dist/panel-api-test ./cmd/panel-api-test
+make build          # dist/panel-api-test
+make build-prod     # dist/panel-api
 ```
 
 Default listen is **`127.0.0.1:8080`**. The process refuses any other bind except explicit `0.0.0.0:8080` or `[::1]:8080`. There is no public listen default and no OpenAPI/Swagger UI.
 
 | Env | Default | Notes |
 |-----|---------|--------|
-| `PANEL_ENV` | `test` | Any other value refuses to start |
+| `PANEL_ENV` | `test` | The test binary refuses any other value, including `prod` |
 | `LISTEN_ADDR` | `127.0.0.1:8080` | Test container cutover sets `0.0.0.0:8080` |
 | `PANEL_JWT_JWKS_URL` | `https://portal-test.glasshosting.internal/oidc/jwks.json` | **Staff accept path.** Portal OIDC RS256 only. Non-dot path: portal-test nginx returns 403 for `/.well-known/*` |
 | `PANEL_JWT_HMAC_SECRET` | required | **Agent mint signing secret.** HS256, at least 16 bytes. Signs and verifies panel-minted agent tokens. Not a staff accept path. The example placeholder is rejected |
@@ -99,6 +101,12 @@ Target container: `lxc-gh-glassgamepanel-test-01`. Upstream for `https://panel-a
 4. Stop the `/healthz` stub on `:8080` and start `panel-api-test`. Both `/healthz` and `/v1/healthz` return `{"ok":true}` with `X-Glass-Runtime: panel-api-test`.
 5. From the WireGuard side, curl the container underlay `/healthz` and expect that header and `X-Glass-Wings-Dispatch: 0`.
 6. Do not add public DNS. Leave `PANEL_WINGS_EXECUTOR` unset (`noop`) and leave `PANEL_WINGS_BASE_URL` and `PANEL_WINGS_TOKEN` empty until a separate gated apply. GlassHosting-managed servers you do not own stay refused (see the deny map).
+
+### Prod binary
+
+`cmd/panel-api` is a separate process from `cmd/panel-api-test`. `make build-prod` writes `dist/panel-api`. `PANEL_ENV` must be `prod`. The test binary still refuses `prod`.
+
+Day-1 pins: issuer `https://portal.glasshosting.com`, audience and public base `https://panel-api.glasshosting.internal`, primary kid `ggp-prod-1`. The public host `panel-api.glasshosting.com` is refused. Staff JWTs verify as Portal OIDC RS256. Staff HS256 is rejected. Agent HS256 mint stays. The executor is `noop`, and the Wings origin and token must both be empty. Managed-inventory servers stay off the create and Wings allowlists, and opt-in stays closed. `X-Glass-Runtime` is `panel-api`. See [`deploy/panel-api.service`](deploy/panel-api.service) and [`deploy/panel-api.env.example`](deploy/panel-api.env.example).
 
 Gateway rate limits (60 mutate / 300 read rpm) are already live and are **ops-attested**. The process enforces the same caps per token `jti` and will not boot with a higher cap. See [`artifacts/api-evidence/rate-limit-60-300.json`](artifacts/api-evidence/rate-limit-60-300.json).
 

@@ -239,6 +239,42 @@ func TestMissingKidUsesSoleKey(t *testing.T) {
 	}
 }
 
+func TestProdPlaneRS256Staff(t *testing.T) {
+	key := genRSA(t)
+	set := &jwksSet{}
+	set.publish(config.ProdJWTKID, &key.PublicKey)
+	srv := httptest.NewServer(set.handler())
+	t.Cleanup(srv.Close)
+	v, err := NewValidator([]byte("day1-prod-hmac-secret-value"), config.ProdJWTIss, config.ProdJWTAud, srv.URL+"/oidc/jwks.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	staff := claims(config.ProdJWTIss, config.ProdJWTAud, now)
+	raw := signRS256(t, key, config.ProdJWTKID, staff)
+	p, err := v.Parse(raw, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.TokenUse != TokenUseStaff || p.AuthPath != PathPortalOIDC || p.Issuer != config.ProdJWTIss {
+		t.Fatalf("%+v", p)
+	}
+
+	testIss := claims(config.DefaultJWTIss, config.ProdJWTAud, now)
+	testIss.ID = "jti-rs-test-iss"
+	raw = signRS256(t, key, config.ProdJWTKID, testIss)
+	if _, err := v.Parse(raw, now); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("test iss rs256 on prod: %v", err)
+	}
+
+	publicAud := claims(config.ProdJWTIss, "https://panel-api.glasshosting.com", now)
+	publicAud.ID = "jti-rs-public-aud"
+	raw = signRS256(t, key, config.ProdJWTKID, publicAud)
+	if _, err := v.Parse(raw, now); !errors.Is(err, ErrProdRejected) {
+		t.Fatalf("public aud rs256 on prod: %v", err)
+	}
+}
+
 func TestJWKSRedirectRejected(t *testing.T) {
 	key := genRSA(t)
 	set := &jwksSet{}

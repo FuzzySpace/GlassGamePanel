@@ -90,6 +90,61 @@ func TestParseRejectsProd(t *testing.T) {
 	}
 }
 
+func TestProdPlaneKeepsGate2b(t *testing.T) {
+	secret := []byte("day1-prod-hmac-secret-value")
+	now := time.Now().UTC()
+
+	agent := claims(config.ProdJWTIss, config.ProdJWTAud, now)
+	agent.TokenUse = TokenUseAgent
+	agent.Subject = "agent:prod"
+	agent.ID = "jti-prod-agent"
+	agent.ServerIDs = []string{"11111111-1111-4111-8111-111111111111"}
+	raw, err := Sign(secret, agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Parse(secret, config.ProdJWTIss, config.ProdJWTAud, raw, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.TokenUse != TokenUseAgent || p.AuthPath != PathAgentHMAC || p.Issuer != config.ProdJWTIss {
+		t.Fatalf("%+v", p)
+	}
+
+	staff := claims(config.ProdJWTIss, config.ProdJWTAud, now)
+	raw, err = Sign(secret, staff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Parse(secret, config.ProdJWTIss, config.ProdJWTAud, raw, now); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("staff hs256 on prod: %v", err)
+	}
+
+	testIss := claims(config.DefaultJWTIss, config.ProdJWTAud, now)
+	testIss.TokenUse = TokenUseAgent
+	testIss.Subject = "agent:test-iss"
+	testIss.ID = "jti-test-iss-on-prod"
+	raw, err = Sign(secret, testIss)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Parse(secret, config.ProdJWTIss, config.ProdJWTAud, raw, now); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("test iss on prod: %v", err)
+	}
+
+	publicAud := claims(config.ProdJWTIss, "https://panel-api.glasshosting.com", now)
+	publicAud.TokenUse = TokenUseAgent
+	publicAud.Subject = "agent:public-aud"
+	publicAud.ID = "jti-public-aud"
+	raw, err = Sign(secret, publicAud)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Parse(secret, config.ProdJWTIss, config.ProdJWTAud, raw, now); !errors.Is(err, ErrProdRejected) {
+		t.Fatalf("public aud on prod: %v", err)
+	}
+}
+
 func claims(iss, aud string, now time.Time) Claims {
 	return Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
